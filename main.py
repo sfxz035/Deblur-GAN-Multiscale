@@ -123,46 +123,59 @@ def GAN_train(args):
             if (count + 1) % 10000 == 0:
                 saver.save(sess, os.path.join(args.savenet_path, 'GAN_net%d.ckpt-done' % (count)))
 def adtest(args):
-    savepath = './libSaveNet/savenet/GAN_net29999.ckpt-done'
-    path_blur = './data_blur/valid/blur.png'
-    path_sharp = './data_blur/valid/sharp.png'
-    img_blur = cv.imread(path_blur)
-    img = cv.imread(path_sharp)
-    img_shape = np.shape(img)
-    row,col = img_shape[0],img_shape[1]
-    ## 归一化
-    img_norm = img/ (255. / 2.) - 1
-    img_blur_norm = img_blur / (255. / 2.) - 1
-
-    img_blur_input = np.expand_dims(img_blur_norm,0)
-    img_label = np.expand_dims(img_norm,0)
-    x = tf.placeholder(tf.float32,shape = [1,row,col, 3])
-    y_ = tf.placeholder(tf.float32,shape = [1,row,col,3])
-    y = model.generator(x,args=args,name='generator')
+    savepath = './libSaveNet/savenet/GAN_net299999.ckpt-done'
+    path_blur = './data_blur/valid/blur'
+    path_sharp = './data_blur/valid/sharp'
+    blur_file = os.listdir(path_blur)
+    sharp_file = os.listdir(path_sharp)
+    blur_file.sort()
+    sharp_file.sort()
+    dir_blur,dir_sharp = [],[]
+    for each in blur_file:
+        dir_blur += [os.path.join(path_blur,each)]
+    for each in sharp_file:
+        dir_sharp += [os.path.join(path_sharp,each)]
+    x = tf.placeholder(tf.float32, shape=[1, 720, 1280, 3])
+    y_ = tf.placeholder(tf.float32, shape=[1, 720, 1280, 3])
+    y = model.generator(x, args=args,name='generator')
     loss = tf.reduce_mean(tf.square(y - y_))
-    PSNR = compute_psnr(y,y_,convert=True)
+    PSNR = compute_psnr(y, y_)
     variables_to_restore = []
     for v in tf.global_variables():
         variables_to_restore.append(v)
     saver = tf.train.Saver(variables_to_restore, write_version=tf.train.SaverDef.V2, max_to_keep=None)
     tf.global_variables_initializer().run()
     saver.restore(sess, savepath)
-    output = sess.run(y,feed_dict={x:img_blur_input})
+    for i in range(len(blur_file)):
+        img_blur = cv.imread(dir_blur[i])
+        img = cv.imread(dir_sharp[i])
+        ## 归一化
+        img_norm = img/ (255. / 2.) - 1
+        img_blur_norm = img_blur / (255. / 2.) - 1
 
-    loss_test = sess.run(loss,feed_dict={y:output,y_:img_label})
-    PSNR_test = sess.run(PSNR,feed_dict={y:output,y_:img_label})
+        img_blur_input = np.expand_dims(img_blur_norm,0)
+        img_label = np.expand_dims(img_norm,0)
 
+        output = sess.run(y,feed_dict={x:img_blur_input})
+        loss_test = sess.run(loss,feed_dict={y:output,y_:img_label})
+        PSNR_test = sess.run(PSNR,feed_dict={y:output,y_:img_label})
 
-    np.save('./output/deblur_img.npy',output)
-    # cv.imwrite('./output/sp_img.png',output,0)
-    # cv.imwrite('./output/lr_img.png',img_LR,0)
-    # cv.imwrite('./output/hr_img.png',img,0)
-    print('loss_test:[%.8f],PSNR_test:[%.8f]' % (loss_test,PSNR_test))
+        output = (output+1)*(255/2)
+        output = np.squeeze(output).astype(np.uint8)
+        cv.imwrite('./output/deblur_0'+str(i)+'.png',output,[int(cv.IMWRITE_PNG_COMPRESSION), 0])
+        # np.save('./output/deblur_img.npy',output)
+        print('loss_test:[%.8f],PSNR_test:[%.8f]' % (loss_test,PSNR_test))
+
 def predict(args):
-    savepath = './libSaveNet/savenet/GAN_net19999.ckpt-done'
-    path_face = './data/valid/2019-04-18-09-33-59-828886_1.bmp'
+    savepath = './libSaveNet/savenet/GAN_net299999.ckpt-done'
+    path_face = './data_blur/valid/2.bmp'
     img = cv.imread(path_face)
     img = img / (255. / 2.) - 1
+    img_shape = np.shape(img)
+    if img_shape[0]%4 != 0:
+        img = img[:img_shape[0]-img_shape[0]%4]
+    if img_shape[1]%4 != 0:
+        img = img[:,:img_shape[1]-img_shape[1]%4]
     img_shape = np.shape(img)
     img_input = np.expand_dims(img,0)
     x = tf.placeholder(tf.float32,shape = [1,img_shape[0],img_shape[1], 3])
@@ -174,7 +187,7 @@ def predict(args):
     tf.global_variables_initializer().run()
     saver.restore(sess, savepath)
     output = sess.run(y,feed_dict={x:img_input})
-    np.save('./output/sp_img.npy',output)
+    np.save('./output/deblur_face.npy',output)
 
 if __name__ == '__main__':
     # GAN_train(args)

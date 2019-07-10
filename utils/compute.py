@@ -4,6 +4,9 @@ def compute_psnr(ref, target,convert=None):
     if convert:
         ref = tf.image.convert_image_dtype(ref, dtype=tf.uint8, saturate=True)
         target = tf.image.convert_image_dtype(target, dtype=tf.uint8, saturate=True)
+    else:
+        ref = (ref + 1) * (255 / 2)
+        target = (target + 1) * (255 / 2)
     ref = tf.cast(ref, tf.float32)
     target = tf.cast(target, tf.float32)
     # diff = target - ref

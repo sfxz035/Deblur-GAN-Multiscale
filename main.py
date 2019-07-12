@@ -123,7 +123,7 @@ def GAN_train(args):
             if (count + 1) % 10000 == 0:
                 saver.save(sess, os.path.join(args.savenet_path, 'GAN_net%d.ckpt-done' % (count)))
 def adtest(args):
-    savepath = './libSaveNet/savenet/GAN_net299999.ckpt-done'
+    savepath = './libSaveNet/savenet/GAN_net209999.ckpt-done'
     path_blur = './data_blur/valid/blur'
     path_sharp = './data_blur/valid/sharp'
     blur_file = os.listdir(path_blur)
@@ -167,18 +167,14 @@ def adtest(args):
         print('loss_test:[%.8f],PSNR_test:[%.8f]' % (loss_test,PSNR_test))
 
 def predict(args):
-    savepath = './libSaveNet/savenet/GAN_net299999.ckpt-done'
-    path_face = './data_blur/valid/2.bmp'
-    img = cv.imread(path_face)
-    img = img / (255. / 2.) - 1
-    img_shape = np.shape(img)
-    if img_shape[0]%4 != 0:
-        img = img[:img_shape[0]-img_shape[0]%4]
-    if img_shape[1]%4 != 0:
-        img = img[:,:img_shape[1]-img_shape[1]%4]
-    img_shape = np.shape(img)
-    img_input = np.expand_dims(img,0)
-    x = tf.placeholder(tf.float32,shape = [1,img_shape[0],img_shape[1], 3])
+    savepath = './libSaveNet/savenet/GAN_net209999.ckpt-done'
+    path_blur = './data_blur/valid/face'
+    blur_file = os.listdir(path_blur)
+    blur_file.sort()
+    dir_blur = []
+    for each in blur_file:
+        dir_blur += [os.path.join(path_blur,each)]
+    x = tf.placeholder(tf.float32, shape=[1, 1920, 1200, 3])
     y = model.generator(x,args=args,name='generator')
     variables_to_restore = []
     for v in tf.global_variables():
@@ -186,10 +182,25 @@ def predict(args):
     saver = tf.train.Saver(variables_to_restore, write_version=tf.train.SaverDef.V2, max_to_keep=None)
     tf.global_variables_initializer().run()
     saver.restore(sess, savepath)
-    output = sess.run(y,feed_dict={x:img_input})
-    np.save('./output/deblur_face.npy',output)
+    for i in range(len(dir_blur)):
+        path_load = dir_blur[i]
+        img = cv.imread(path_load)
+        img = img / (255. / 2.) - 1
+        img_shape = np.shape(img)
+        if img_shape[0]%4 != 0:
+            img = img[:img_shape[0]-img_shape[0]%4]
+        if img_shape[1]%4 != 0:
+            img = img[:,:img_shape[1]-img_shape[1]%4]
+        img_input = np.expand_dims(img,0)
+
+        output = sess.run(y,feed_dict={x:img_input})
+        output = (output+1)*(255/2)
+        output = np.clip(output,0,255)
+        output = np.squeeze(output).astype(np.uint8)
+        cv.imwrite('./output/deblur_face_0'+str(i)+'.png',output,[int(cv.IMWRITE_PNG_COMPRESSION), 0])
+        # np.save('./output/deblur_face.npy',output)
 
 if __name__ == '__main__':
     # GAN_train(args)
-    adtest(args)
-    # predict(args)
+    # adtest(args)
+    predict(args)

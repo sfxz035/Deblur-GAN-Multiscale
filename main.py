@@ -8,7 +8,7 @@ import cv2 as cv
 import scipy.misc
 
 from utils.compute import *
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'   #指定第一块GPU可用
+os.environ["CUDA_VISIBLE_DEVICES"] = '2'   #指定第一块GPU可用
 config = tf.ConfigProto()
 config.gpu_options.per_process_gpu_memory_fraction = 1 # 程序最多只能占用指定gpu50%的显存
 config.gpu_options.allow_growth = True      #程序按需申请内存
@@ -19,9 +19,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--train_file",default="./data_blur/train")
 parser.add_argument("--test_file",default="./data_blur/test")
 parser.add_argument("--batch_size",default=1,type=int)
-parser.add_argument("--savenet_path",default='./libSaveNet/savenet/')
+parser.add_argument("--savenet_path",default='./libSaveNet/savenet2/')
 parser.add_argument("--vgg_ckpt",default='./libSaveNet/vgg_ckpt/vgg_19.ckpt')
-parser.add_argument("--epoch",default=200000,type=int)
+parser.add_argument("--epoch",default=20,type=int)
 parser.add_argument("--learning_rate",default=0.0001,type=float)
 parser.add_argument("--crop_size",default=256,type=int)
 parser.add_argument("--num_train",default=10000,type=int)
@@ -29,7 +29,7 @@ parser.add_argument("--num_test",default=1500,type=int)
 parser.add_argument("--EPS",default=1e-12,type=float)
 parser.add_argument("--perceptual_mode",default='VGG33')
 
-parser.add_argument("--num_of_down_scale", type = int, default = 2)
+parser.add_argument("--num_of_down_scale", type = int, default = 3)
 parser.add_argument("--gen_resblocks", type = int, default = 9)
 parser.add_argument("--n_feats", type = int, default = 64)
 parser.add_argument("--discrim_blocks", type = int, default = 3)
@@ -43,7 +43,7 @@ def GAN_train(args):
 
     genInput = tf.placeholder(tf.float32,shape = [args.batch_size,args.crop_size,args.crop_size,3])
     genLabel = tf.placeholder(tf.float32,shape = [args.batch_size,args.crop_size,args.crop_size,3])
-    genOutput = model.generator(genInput,args=args,name='generator')
+    genOutput = model.generator2(genInput,args=args,name='generator')
 
     discr_outlabel = model.discriminator(genLabel,args=args,name='discriminator')
     discr_outGenout = model.discriminator(genOutput,args=args,reuse=True,name='discriminator')
@@ -61,7 +61,7 @@ def GAN_train(args):
     summary_op = tf.summary.merge_all()
 
     var_list = tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-    saver = tf.train.Saver(var_list,max_to_keep=10)
+    saver = tf.train.Saver(var_list,max_to_keep=20)
     # var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator') + \
     #             tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='discriminator')
     genvar_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='generator')
@@ -195,7 +195,7 @@ def predict(args):
 
         output = sess.run(y,feed_dict={x:img_input})
         output = (output+1)*(255/2)
-        output = np.clip(output,0,255)
+        # output = np.clip(output,0,255)
         output = np.squeeze(output).astype(np.uint8)
         cv.imwrite('./output/deblur_face_0'+str(i)+'.png',output,[int(cv.IMWRITE_PNG_COMPRESSION), 0])
         # np.save('./output/deblur_face.npy',output)

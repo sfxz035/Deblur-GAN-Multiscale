@@ -77,12 +77,44 @@ def generator(input,reuse=False,args=None,name='Deblur'):
     with tf.variable_scope(name,reuse=reuse):
         x = ReLU(instance_norm(conv_b(input,args.n_feats,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
         for i in range(args.num_of_down_scale):
-            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),strides=[1,2,2,1],name='Conv2d_down_'+str(i+1)),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1))
+            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),strides=[1,2,2,1],name='Conv2d_down_'+str(i+1)+'_1'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_1')
+            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),name='Conv2d_down_'+str(i+1)+'_2'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_2')
         for i in range(args.gen_resblocks):
             x = res_block(x,args.n_feats * (2 ** args.num_of_down_scale),name='res_block_'+str(i+1))
         for i in range(args.num_of_down_scale):
             size = x.get_shape().as_list()
-            x = ReLU(instance_norm(Deconv2d(x, [size[0], size[1] * 2, size[2] * 2, size[3]//2],name='Deconv2d_'+str(i+1)),size[3]//2),name='DeReLU_'+str(i+1))
+            # x = ReLU(instance_norm(Deconv2d(x, [size[0], size[1] * 2, size[2] * 2, size[3]//2],name='Deconv2d_'+str(i+1)),size[3]//2),name='DeReLU_'+str(i+1))
+            x = tf.image.resize_images(x,[size[1]*2, size[2] * 2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_1'),size[3]//2),name='Relu_up_'+str(i+1)+'_1')
+            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_2'),size[3]//2),name='Relu_up_'+str(i+1)+'_2')
+
+        x = conv_b(x,1,k_h=7,k_w=7,name='conv2d_L2')
+        x = tf.nn.tanh(x)
+        x = x + input
+        x = tf.clip_by_value(x, -1.0, 1.0)
+
+        return x
+def generator2(input,reuse=False,args=None,name='Deblur'):
+    with tf.variable_scope(name,reuse=reuse):
+        x = ReLU(instance_norm(conv_b(input,args.n_feats,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
+        alist = []
+        for i in range(args.num_of_down_scale):
+            alist += [x]
+            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),strides=[1,2,2,1],name='Conv2d_down_'+str(i+1)+'_1'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_1')
+            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),name='Conv2d_down_'+str(i+1)+'_2'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_2')
+        for i in range(args.gen_resblocks):
+            x = res_block(x,args.n_feats * (2 ** args.num_of_down_scale),name='res_block_'+str(i+1))
+        for i in range(args.num_of_down_scale):
+            size = x.get_shape().as_list()
+            x_c = alist[-1-i]
+            # x = ReLU(instance_norm(Deconv2d(x, [size[0], size[1] * 2, size[2] * 2, size[3]//2],name='Deconv2d_'+str(i+1)),size[3]//2),name='DeReLU_'+str(i+1))
+            x = tf.image.resize_images(x,[size[1]*2, size[2] * 2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_1'),size[3]//2),name='Relu_up_'+str(i+1)+'_1')
+
+            x = tf.concat((x,x_c),-1)
+            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_2'),size[3]//2),name='Relu_up_'+str(i+1)+'_2')
+        x = ReLU(instance_norm(conv_b(x, 32, name='Conv2d_L2_1'),32),name='Relu_L2_1')
+        x = ReLU(instance_norm(conv_b(x, 16, name='Conv2d_L2_2'),16),name='Relu_L2_2')
         x = conv_b(x,1,k_h=7,k_w=7,name='conv2d_L2')
         x = tf.nn.tanh(x)
         x = x + input

@@ -146,7 +146,9 @@ def resBlock_SR(input,feature_size=64,kernel_size=[3,3],strides=[1,1,1,1],is_tra
         output = conv2 + input
         return output
 
-
+def Fully_connected(x, units, name='fully_connected') :
+    with tf.name_scope(name) :
+        return tf.layers.dense(inputs=x, use_bias=False, units=units)
 
 #### unsample
 def upsample(x,features=64,scale=2,kernel_size=[3,3],strides=[1,1,1,1]):
@@ -224,3 +226,14 @@ def instance_norm(x, dim, affine=False, BN_decay=0.999, BN_epsilon=1e-3,name='IN
 
     return x
 
+def SE_block(input_x, ratio=16, name='SE_block'):
+    with tf.variable_scope(name):
+        input_shape = input_x.get_shape().as_list()
+        squeeze = tf.nn.avg_pool(input_x,[1,input_shape[1],input_shape[2],1],[1,input_shape[1],input_shape[2],1],padding='SAME')
+        F1 = ReLU(Fully_connected(squeeze,units=input_shape[3]/ratio,name='Fc1'),name='ReLU_Fc1')
+        F2 = Fully_connected(F1,units=input_shape[3],name='Fc2')
+        excitation = tf.nn.sigmoid(F2)
+        excitation = tf.reshape(excitation, [-1,1,1,input_shape[-1]])
+        scale = input_x * excitation
+
+        return scale

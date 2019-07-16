@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--train_file",default="./data_blur/train")
 parser.add_argument("--test_file",default="./data_blur/test")
 parser.add_argument("--batch_size",default=1,type=int)
-parser.add_argument("--savenet_path",default='./libSaveNet/savenet2/')
+parser.add_argument("--savenet_path",default='./libSaveNet/savenet/')
 parser.add_argument("--vgg_ckpt",default='./libSaveNet/vgg_ckpt/vgg_19.ckpt')
 parser.add_argument("--epoch",default=20,type=int)
 parser.add_argument("--learning_rate",default=0.0001,type=float)
@@ -29,10 +29,10 @@ parser.add_argument("--num_test",default=1500,type=int)
 parser.add_argument("--EPS",default=1e-12,type=float)
 parser.add_argument("--perceptual_mode",default='VGG33')
 
-parser.add_argument("--num_of_down_scale", type = int, default = 3)
+parser.add_argument("--num_of_down_scale", type = int, default = 2)
 parser.add_argument("--gen_resblocks", type = int, default = 9)
 parser.add_argument("--n_feats", type = int, default = 64)
-parser.add_argument("--discrim_blocks", type = int, default = 3)
+parser.add_argument("--discrim_blocks", type = int, default = 2)
 
 args = parser.parse_args()
 
@@ -137,7 +137,7 @@ def adtest(args):
         dir_sharp += [os.path.join(path_sharp,each)]
     x = tf.placeholder(tf.float32, shape=[1, 720, 1280, 3])
     y_ = tf.placeholder(tf.float32, shape=[1, 720, 1280, 3])
-    y = model.generator(x, args=args,name='generator')
+    y = model.generator2(x, args=args,name='generator')
     loss = tf.reduce_mean(tf.square(y - y_))
     PSNR = compute_psnr(y, y_)
     variables_to_restore = []
@@ -202,5 +202,5 @@ def predict(args):
 
 if __name__ == '__main__':
     # GAN_train(args)
-    # adtest(args)
-    predict(args)
+    adtest(args)
+    # predict(args)

@@ -127,7 +127,7 @@ def generator2(input,reuse=False,args=None,name='Deblur'):
             x = SE_block(x,name='SE_block_up_'+str(i))
         x = ReLU(instance_norm(conv_b(x, 32, name='Conv2d_L2_1'),32),name='Relu_L2_1')
         x = ReLU(instance_norm(conv_b(x, 16, name='Conv2d_L2_2'),16),name='Relu_L2_2')
-        x = conv_b(x,1,k_h=7,k_w=7,name='conv2d_L2')
+        x = conv_b(x,3,k_h=7,k_w=7,name='conv2d_L2')
         x = tf.nn.tanh(x)
         x = x + input
         x = tf.clip_by_value(x, -1.0, 1.0)
@@ -184,7 +184,7 @@ def GP_loss(gene_img,label,args=None):
 
 
 def gen_loss2(output,label,fake_prob1,fake_prob2,fake_prob3,EPS,perceptual_mode):
-    # loss_mse = tf.reduce_mean(tf.abs(output-label))
+    loss_mse = tf.reduce_mean(tf.abs(output-label))
     with tf.name_scope('vgg19_1') as scope:
         extracted_feature_gen = VGG19_slim(output, perceptual_mode, reuse=False, scope=scope)
     with tf.name_scope('vgg19_2') as scope:
@@ -196,7 +196,7 @@ def gen_loss2(output,label,fake_prob1,fake_prob2,fake_prob3,EPS,perceptual_mode)
     adversarial_loss2 = tf.reduce_mean(tf.nn.l2_loss(fake_prob2 - tf.ones_like(fake_prob2)))
     adversarial_loss3 = tf.reduce_mean(tf.nn.l2_loss(fake_prob3 - tf.ones_like(fake_prob3)))
     adversarial_loss = (adversarial_loss1+adversarial_loss2+adversarial_loss3)/3
-    gen_loss = adversarial_loss + 100*loss_vgg
+    gen_loss = adversarial_loss + 100*loss_mse+0.1*loss_vgg
     return gen_loss
 
 def discr_loss2(gen_prob,real_prob,EPS=1e-8):

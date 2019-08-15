@@ -4,7 +4,6 @@ import cv2 as cv
 import random
 import scipy.misc
 import time
-batch_index = 0
 
 ### blur dataset
 def get_blur_files(data_dir,crop_size):
@@ -14,12 +13,14 @@ def get_blur_files(data_dir,crop_size):
         dir = os.path.join(data_dir,each)
         inpt_lab = os.listdir(dir)
         inpt_dir = os.path.join(dir,inpt_lab[0])
-        label_dir = os.path.join(dir,inpt_lab[2])
+        label_dir = os.path.join(dir,inpt_lab[1])
         img_files = os.listdir(inpt_dir)
-
-        for file in img_files:
+        label_files = os.listdir(label_dir)
+        for i in range(len(img_files)):
+            file = img_files[i]
+            label_file = label_files[i]
             inpt_path = os.path.join(inpt_dir,file)
-            label_path = os.path.join(label_dir,file)
+            label_path = os.path.join(label_dir,label_file)
             img = cv.imread(inpt_path)
             x,y,z = img.shape
             coords_x = x // crop_size

@@ -86,27 +86,6 @@ def SE_resblock(input,feature_size=64,kernel_size=[3,3],strides=[1,1,1,1],name='
 def generator(input,reuse=False,args=None,name='Deblur'):
     with tf.variable_scope(name,reuse=reuse):
         x = ReLU(instance_norm(conv_b(input,args.n_feats,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
-        for i in range(args.num_of_down_scale):
-            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),strides=[1,2,2,1],name='Conv2d_down_'+str(i+1)+'_1'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_1')
-            x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),name='Conv2d_down_'+str(i+1)+'_2'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_2')
-        for i in range(args.gen_resblocks):
-            x = res_block(x,args.n_feats * (2 ** args.num_of_down_scale),name='res_block_'+str(i+1))
-        for i in range(args.num_of_down_scale):
-            size = x.get_shape().as_list()
-            # x = ReLU(instance_norm(Deconv2d(x, [size[0], size[1] * 2, size[2] * 2, size[3]//2],name='Deconv2d_'+str(i+1)),size[3]//2),name='DeReLU_'+str(i+1))
-            x = tf.image.resize_images(x,[size[1]*2, size[2] * 2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_1'),size[3]//2),name='Relu_up_'+str(i+1)+'_1')
-            x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_2'),size[3]//2),name='Relu_up_'+str(i+1)+'_2')
-
-        x = conv_b(x,1,k_h=7,k_w=7,name='conv2d_L2')
-        x = tf.nn.tanh(x)
-        x = x + input
-        x = tf.clip_by_value(x, -1.0, 1.0)
-
-        return x
-def generator2(input,reuse=False,args=None,name='Deblur'):
-    with tf.variable_scope(name,reuse=reuse):
-        x = ReLU(instance_norm(conv_b(input,args.n_feats,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
         x = SE_block(x, name='SE_block_L1')
         alist = []
         for i in range(args.num_of_down_scale):
@@ -133,6 +112,55 @@ def generator2(input,reuse=False,args=None,name='Deblur'):
         x = tf.clip_by_value(x, -1.0, 1.0)
 
         return x
+def generator_stack(input,reuse=False,args=None,name='Deblur'):
+    with tf.variable_scope(name,reuse=reuse):
+        input_scale2 = tf.nn.avg_pool(input,[1,2,2,1],[1,2,2,1],padding='SAME')
+        result = []
+        with tf.variable_scope(name+'_G1',reuse=reuse):
+            x = ReLU(instance_norm(conv_b(input_scale2,args.n_feats,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
+            x = SE_block(x, name='SE_block_L1')
+            alist = []
+            for i in range(args.num_of_down_scale):
+                alist += [x]
+                x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),strides=[1,2,2,1],name='Conv2d_down_'+str(i+1)+'_1'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_1')
+                x = ReLU(instance_norm(conv_b(x,args.n_feats*(2**(i+1)),name='Conv2d_down_'+str(i+1)+'_2'),args.n_feats*(2**(i+1))),name='Relu_down_'+str(i+1)+'_2')
+                x = SE_block(x,name='SE_block_down_'+str(i))
+            for i in range(args.gen_resblocks):
+                x = SE_resblock(x,args.n_feats * (2 ** args.num_of_down_scale),name='res_block_'+str(i+1))
+            for i in range(args.num_of_down_scale):
+                size = x.get_shape().as_list()
+                x_c = alist[-1-i]
+                x = tf.image.resize_images(x,[size[1]*2, size[2] * 2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+                x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_1'),size[3]//2),name='Relu_up_'+str(i+1)+'_1')
+                x = tf.concat((x,x_c),-1)
+                x = ReLU(instance_norm(conv_b(x,size[3]//2,name='Conv2d_up_'+str(i+1)+'_2'),size[3]//2),name='Relu_up_'+str(i+1)+'_2')
+                x = SE_block(x,name='SE_block_up_'+str(i))
+            x = ReLU(instance_norm(conv_b(x, 32, name='Conv2d_L2_1'),32),name='Relu_L2_1')
+            # x = ReLU(instance_norm(conv_b(x, 16, name='Conv2d_L2_2'),16),name='Relu_L2_2')
+            last_feature_map = x
+            x = conv_b(x,3,k_h=7,k_w=7,name='conv2d_L2')
+            x = tf.nn.tanh(x)
+            # x = x + input_scale2
+            x = tf.clip_by_value(x, -1.0, 1.0)
+            result += [x]
+        with tf.variable_scope(name+'_G2',reuse=reuse):
+            x = ReLU(instance_norm(conv_b(input,16,k_h=7,k_w=7,name='conv2d_L1'),args.n_feats),name='Relu_L1')
+            x = ReLU(instance_norm(
+                conv_b(x, 32, strides=[1, 2, 2, 1], name='Conv2d_down_1'),32), name='Relu_down_1')
+            # x = x + last_feature_map
+            x = tf.concat((x,last_feature_map),-1)
+            # x = ReLU(instance_norm(conv_b(x,64,k_h=1,k_w=1,name='conv2d_L1_2'),32),name='ReLU_L1_2')
+            for i in range(3):
+                x = SE_resblock(x,64,name='res_block_'+str(i+1))
+            size = x.get_shape().as_list()
+            x = tf.image.resize_images(x, [size[1] * 2, size[2] * 2], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+            x = ReLU(instance_norm(conv_b(x, size[3] // 2, name='Conv2d_up_1'), size[3] // 2),name='Relu_up_1')
+            x = conv_b(x,3,k_h=7,k_w=7,name='conv2d_L2')
+            x = tf.nn.tanh(x)
+            # x = x+input
+            x = tf.clip_by_value(x, -1.0, 1.0)
+            result += [x]
+        return result
 def discriminator(x, reuse=False,args=None,name='discriminator'):
 
 
@@ -153,6 +181,34 @@ def discriminator(x, reuse=False,args=None,name='discriminator'):
         x = tf.nn.sigmoid(x)
 
         return x
+
+def discriminator_mult(x, reuse=False,args=None,name='discriminator'):
+
+
+    with tf.variable_scope(name_or_scope=name, reuse=reuse):
+        x = conv_b(x, args.n_feats,k_h=4,k_w=4,strides=[1,2,2,1],name='conv1')
+        x = LReLU(instance_norm(x, dim=args.n_feats,name='inst_norm1'),name='LReLU1')
+
+        for i in range(args.discrim_blocks):
+            n = min(2 ** (i + 1), 8)
+            x = conv_b(x, args.n_feats * n, k_h = 4, k_w = 4,strides=[1,2,2,1],name='conv%02d' % i)
+            x = LReLU(instance_norm(x=x, dim=args.n_feats * n,name='instance_norm%02d' % i),name='LReLU%02d' % i)
+        out1 = conv_b(x,args.n_feats,k_h=1,k_w=1,name='conv2d_out1_1')
+        out1 = LReLU(instance_norm(out1, dim=args.n_feats,name='inst_norm_out1_1'),name='LReLU_out1_1')
+        out1 = tf.nn.sigmoid(conv_b(out1,1,name='conv2d_out1_2'))
+        n = min(2 ** args.discrim_blocks, 8)
+        x = conv_b(x, args.n_feats * n,k_h = 4, k_w = 4,name='conv_d1')
+        x = LReLU(instance_norm(x=x, dim=args.n_feats * n,name='instance_norm_d1'),name='LReLU_dl')
+
+        out2 = conv_b(x, 1,k_h=4,k_w=4,name='conv_out2')
+        out2 = tf.nn.sigmoid(out2)
+
+        x = conv_b(x, args.n_feats * n,k_h = 4, k_w = 4,strides=[1,2,2,1],name='conv_d2')
+        x = LReLU(instance_norm(x, dim=args.n_feats,name='inst_norm_d2'),name='LReLU_d2')
+        out3 = conv_b(x, 1,k_h=4,k_w=4,name='conv_out3')
+        out3 = tf.nn.sigmoid(out3)
+        return out1,out2,out3
+
 def gen_loss(output,label,fake_prob,EPS,perceptual_mode):
     # loss_mse = tf.reduce_mean(tf.abs(output-label))
     with tf.name_scope('vgg19_1') as scope:
@@ -183,53 +239,46 @@ def GP_loss(gene_img,label,args=None):
     return gp_loss
 
 
-def gen_loss2(output,label,fake_prob1,fake_prob2,fake_prob3,EPS,perceptual_mode):
-    loss_mse = tf.reduce_mean(tf.abs(output-label))
+def gen_loss_mult(output,label,fake_prob1,fake_prob2,fake_prob3,EPS,perceptual_mode):
+    # loss_mse = tf.reduce_mean(tf.abs(output-label))
+    output_down = output[0]
+    label_down = tf.nn.avg_pool(label,[1,2,2,1],[1,2,2,1],padding='SAME')
+    output_up = output[1]
     with tf.name_scope('vgg19_1') as scope:
-        extracted_feature_gen = VGG19_slim(output, perceptual_mode, reuse=False, scope=scope)
+        extracted_feature_gen = VGG19_slim(output_down, perceptual_mode, reuse=False, scope=scope)
+    with tf.name_scope('vgg19_2') as scope:
+        extracted_feature_target = VGG19_slim(label_down, perceptual_mode, reuse=True, scope=scope)
+    loss_vgg_down = tf.reduce_mean(tf.square(extracted_feature_gen-extracted_feature_target))
+
+    with tf.name_scope('vgg19_1') as scope:
+        extracted_feature_gen = VGG19_slim(output_up, perceptual_mode, reuse=True, scope=scope)
     with tf.name_scope('vgg19_2') as scope:
         extracted_feature_target = VGG19_slim(label, perceptual_mode, reuse=True, scope=scope)
-    loss_vgg = tf.reduce_mean(tf.square(extracted_feature_gen-extracted_feature_target))
+    loss_vgg_up = tf.reduce_mean(tf.square(extracted_feature_gen-extracted_feature_target))
+    loss_vgg = (loss_vgg_down+loss_vgg_up)/2
 
-    # adversarial_loss1 = tf.reduce_mean(tf.square(fake_prob1-tf.random_uniform(shape=[fake_prob1.get_shape().as_list()[0],1],minval=0.9,maxval=1.1,dtype=tf.float32)))
+
     adversarial_loss1 = tf.reduce_mean(tf.nn.l2_loss(fake_prob1 - tf.ones_like(fake_prob1)))
     adversarial_loss2 = tf.reduce_mean(tf.nn.l2_loss(fake_prob2 - tf.ones_like(fake_prob2)))
     adversarial_loss3 = tf.reduce_mean(tf.nn.l2_loss(fake_prob3 - tf.ones_like(fake_prob3)))
     adversarial_loss = (adversarial_loss1+adversarial_loss2+adversarial_loss3)/3
-    gen_loss = adversarial_loss + 100*loss_mse+0.1*loss_vgg
+    gen_loss = adversarial_loss + 0.1*loss_vgg
     return gen_loss
 
-def discr_loss2(gen_prob,real_prob,EPS=1e-8):
+def discr_loss_mult(gen_prob1,real_prob1,gen_prob2,real_prob2,gen_prob3,real_prob3):
 
-    d_loss_fake = tf.reduce_mean(tf.nn.l2_loss(gen_prob - tf.zeros_like(gen_prob)))
-    d_loss_real = tf.reduce_mean(tf.nn.l2_loss(real_prob - tf.ones_like(real_prob)))
+    d_loss_fake1 = tf.reduce_mean(tf.nn.l2_loss(gen_prob1 - tf.zeros_like(gen_prob1)))
+    d_loss_real1 = tf.reduce_mean(tf.nn.l2_loss(real_prob1 - tf.ones_like(real_prob1)))
+    d_loss1 = d_loss_fake1+d_loss_real1
 
-    d_loss = d_loss_fake+d_loss_real
-    return d_loss
+    d_loss_fake2 = tf.reduce_mean(tf.nn.l2_loss(gen_prob2 - tf.zeros_like(gen_prob2)))
+    d_loss_real2 = tf.reduce_mean(tf.nn.l2_loss(real_prob2 - tf.ones_like(real_prob2)))
+    d_loss2 = d_loss_fake2+d_loss_real2
 
-def discriminator2(x, reuse=False,args=None,name='discriminator'):
+    d_loss_fake3 = tf.reduce_mean(tf.nn.l2_loss(gen_prob3 - tf.zeros_like(gen_prob3)))
+    d_loss_real3 = tf.reduce_mean(tf.nn.l2_loss(real_prob3 - tf.ones_like(real_prob3)))
+    d_loss3 = d_loss_fake3+d_loss_real3
 
+    dis_loss = (d_loss1+d_loss2+d_loss3)/3
 
-    with tf.variable_scope(name_or_scope=name, reuse=reuse):
-        x = conv_b(x, args.n_feats,k_h=4,k_w=4,strides=[1,2,2,1],name='conv1')
-        x = LReLU(instance_norm(x, dim=args.n_feats,name='inst_norm1'),name='LReLU1')
-
-        for i in range(args.discrim_blocks):
-            n = min(2 ** (i + 1), 8)
-            x = conv_b(x, args.n_feats * n, k_h = 4, k_w = 4,strides=[1,2,2,1],name='conv%02d' % i)
-            x = LReLU(instance_norm(x=x, dim=args.n_feats * n,name='instance_norm%02d' % i),name='LReLU%02d' % i)
-        out1 = conv_b(x,args.n_feats,k_h=1,k_w=1,name='conv2d_out1_1')
-        out1 = LReLU(instance_norm(out1, dim=args.n_feats,name='inst_norm_out1_1'),name='LReLU_out1_1')
-        out1 = tf.nn.sigmoid(conv_b(out1,1,name='conv2d_out1_2'))
-        n = min(2 ** args.discrim_blocks, 8)
-        x = conv_b(x, args.n_feats * n,k_h = 4, k_w = 4,name='conv_d1')
-        x = LReLU(instance_norm(x=x, dim=args.n_feats * n,name='instance_norm_d1'),name='LReLU_dl')
-
-        out2 = conv_b(x, 1,k_h=4,k_w=4,name='conv_out2')
-        out2 = tf.nn.sigmoid(out2)
-
-        x = conv_b(x, args.n_feats * n,k_h = 4, k_w = 4,strides=[1,2,2,1],name='conv_d2')
-        x = LReLU(instance_norm(x, dim=args.n_feats,name='inst_norm_d2'),name='LReLU_d2')
-        out3 = conv_b(x, 1,k_h=4,k_w=4,name='conv_out3')
-        out3 = tf.nn.sigmoid(out3)
-        return out1,out2,out3
+    return dis_loss

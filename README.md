@@ -1,1 +1,1 @@
-# Deblur-GAN
+# Deblur-GAN-Multiscale
